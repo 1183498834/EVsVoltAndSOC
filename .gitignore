@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# 训练/预测产物
+SOC_unstand/
+cell_scale/
+pictures/
+np_data/
+result/
+soc_data/
+volt_data/
+soc_*/
+volt_*/
+pictures_soc/
+pictures_volt/
+*.png
+
+# 模型权重
+*.pt
+*.pth

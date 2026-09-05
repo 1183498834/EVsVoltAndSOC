@@ -1,182 +1,122 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Dec 13 10:12:40 2022
+"""使用训练好的 DLSTM 模型对单体电池电压进行预测。
 
-@author: Flashy
+遍历 ``./result/model/*.pt`` 中每个电池的模型，对 ``./np_data/*/``
+逐车预测，输出对比图与 MSE / MAE / RMSE / R2 评估指标。
 """
 import os
 import re
 from glob import iglob
-import pandas as pd
-import numpy as np
-import torch
+from math import sqrt
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
-from DLSTM import Model
 
-from math import sqrt
-from sklearn.metrics import mean_absolute_error
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import r2_score
+from data_utils import load_state_dict, make_windows, standardize_per_cycle
+from dlstm import Model
 
+SEQ_LEN = 60
+LABEL_LEN = 42
+PRED_LEN = 18
 
-seq_len = 60
-label_len = 42
-pred_len = 18
-batch = 128
-epochs = 100
-lr = 1
+MODEL_GLOB = "./result/model/*.pt"
+DATA_ROOT = "./np_data/*"
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-path = os.path.join('./result/model/*.pt')
-files = iglob(path)
-for i in files:
-    cell_num = int(re.split('cell|\_', i)[1]) - 1
-    print("Running the {} cell.".format(cell_num))
-    """"""
-    m_state_dict = torch.load(i, map_location=torch.device('cpu'))
-    value = m_state_dict.values()
-    keys=[]
-    for index, idx in enumerate(m_state_dict):
-        if len(idx.split(".")) >= 3:
-            idx = (".").join(idx.split(".")[1:])
-            keys.append(idx)
-        else:
-            idx = (".").join(idx.split("."))
-            keys.append(idx)
-    new_state_dict = dict(zip(keys, value))
-    model = Model(seq_len=seq_len, pred_len=pred_len)
-    model.load_state_dict(new_state_dict)
 
-    # 读取数据
-    data_root_path = './np_data/*'
-    root = iglob(data_root_path)
-    car_len = 0
-    for r in root:
-        
-        data_path = r+'/charge_new_feature.npy'
-        print("Running {}!".format(data_path))
-        data = np.load(data_path)
-        battery_volt = data[:, :, 3:]
-        charge_features = data[:, :, :3]
-        
-        # 一个电池的模型应该对应一个电池
-        needed = np.dstack((charge_features, battery_volt[:, :, cell_num]))
-        # print(needed)
-        
-        volt_scaler = StandardScaler()
-        current_scaler = StandardScaler()
-        soc_scaler = StandardScaler()
-        cell_scaler = StandardScaler()
-        
-        # 数据标准化
-        for times in range(needed.shape[0]):
-            needed[times, :, 0] = volt_scaler.fit_transform(needed[times, :, 0].reshape(-1, 1)).reshape(-1)
-            needed[times, :, 1] = current_scaler.fit_transform(needed[times, :, 1].reshape(-1, 1)).reshape(-1)
-            needed[times, :, 2] = soc_scaler.fit_transform(needed[times, :, 2].reshape(-1, 1)).reshape(-1)
-            needed[times, :, 3] = cell_scaler.fit_transform(needed[times, :, 3].reshape(-1, 1)).reshape(-1)
-        
-        # 滑动窗口弄出需要的seq len，然后按充电次数叠在一起，放在batch那一列，所以batch会从现在的150扩充。
-        data_x = []
-        data_y = []
-        for times in range(needed.shape[0]):
-            start_x = 0
-            while True:
-                end_x = start_x + seq_len
-                start_y = end_x - label_len
-                end_y = start_y + label_len + pred_len
-                data_x.append(needed[times, start_x:end_x, :])
-                data_y.append(needed[times, start_y:end_y, :])
-                start_x += end_y 
-                if start_x + seq_len + pred_len > needed.shape[1]: 
-                    break
-        data_x = np.array(data_x)
-        data_y = np.array(data_y)
-        batch_len = data_x.shape[0]
-        # print("x:", data_x.shape)
-        # print("y:", data_y.shape)
-        data_x = torch.FloatTensor(data_x)
-        volt=[]
-        volt_mse = []
-        volt_mae = []
-        volt_rmse = []
-        volt_r2 = []
-        for batch in tqdm(range(batch_len)):
-            input_x = data_x[batch, :, :]
-            true_y = data_y[batch, -pred_len:, :]
-            # print("y:", true_y.shape)
-            input_x = torch.unsqueeze(input_x, dim=0)
-            
-            output = model(input_x)
-            output = output[:, -pred_len:, -2:]
-            
-            input_volt = input_x[0, :, -1].detach().cpu().numpy()
-            pred_volt = output[0, :, -1].detach().cpu().numpy()
+def main():
+    for model_path in iglob(MODEL_GLOB):
+        cell_num = int(re.split(r"cell|_", os.path.basename(model_path))[1]) - 1
+        print(f"Running the {cell_num} cell.")
 
-            
-            gd_volt = cell_scaler.inverse_transform(input_volt.reshape(-1, 1)).reshape(-1)
-            
-            inverse_volt = cell_scaler.inverse_transform(pred_volt.reshape(-1, 1)).reshape(-1)
-            
-            true_volt = cell_scaler.inverse_transform(true_y[:, -1].reshape(-1, 1)).reshape(-1)
-            
-            gtvolt = np.concatenate((gd_volt, true_volt), axis=0)
-            volt.append(gtvolt)
-            pdvolt = np.concatenate((gd_volt, inverse_volt), axis=0)
-            volt.append(pdvolt)
-            
-            
-            # 画图保存
-            picture_path = r + '\\pictures_volt\\{}'.format(cell_num)
-            if not os.path.exists(picture_path):
-                os.makedirs(picture_path)
-            picture_path = picture_path + '\\{}.png'.format(batch)
-            plt.figure()
-            plt.plot(gtvolt, label='GroundTruth Volt', linewidth=2)
-            plt.plot(pdvolt, label='Prediction Volt', linewidth=2)
-            plt.legend()
-            plt.savefig(picture_path, bbox_inches='tight')
-            plt.close()
-            
-            
-            # 保存误差
-            volt_mse.append(mean_squared_error(true_volt, inverse_volt))
-            volt_mae.append(mean_absolute_error(true_volt, inverse_volt))
-            volt_rmse.append(sqrt(mean_squared_error(true_volt, inverse_volt)))
-            volt_r2.append(r2_score(true_volt, inverse_volt))
-            
-            
-        volt_data_path = r + '/volt_data'
-        if not os.path.exists(volt_data_path):
-            os.makedirs(volt_data_path)
-        volt_data_path = volt_data_path + '/cell_{}.csv'.format(cell_num)
-        volt_data = pd.DataFrame(data=list(map(list, zip(*volt))))
-        volt_data.to_csv(volt_data_path, encoding='gbk')
-        
-            
-        volt_mse_path = r + '\\volt_mse'
-        if not os.path.exists(volt_mse_path):
-            os.makedirs(volt_mse_path)
-        volt_mse_path = volt_mse_path + '\\cell_{}.npy'.format(cell_num)
-        np.save(volt_mse_path, volt_mse)
-        
-        volt_mae_path = r + '\\volt_mae'
-        if not os.path.exists(volt_mae_path):
-            os.makedirs(volt_mae_path)
-        volt_mae_path = volt_mae_path + '\\cell_{}.npy'.format(cell_num)
-        np.save(volt_mae_path, volt_mae)
-        
-        volt_rmse_path = r + '\\volt_rmse'
-        if not os.path.exists(volt_rmse_path):
-            os.makedirs(volt_rmse_path)
-        volt_rmse_path = volt_rmse_path + '\\cell_{}.npy'.format(cell_num)
-        np.save(volt_rmse_path, volt_rmse)
-        
-        volt_r2_path = r + '\\volt_r2'
-        if not os.path.exists(volt_r2_path):
-            os.makedirs(volt_r2_path)
-        volt_r2_path = volt_r2_path + '\\cell_{}.npy'.format(cell_num)
-        np.save(volt_r2_path, volt_r2)
-        
-        
+        model = Model(seq_len=SEQ_LEN, pred_len=PRED_LEN, enc_in=4)
+        model = load_state_dict(model, model_path)
+        model.to(device)
+        model.eval()
+
+        for car_dir in iglob(DATA_ROOT):
+            data_path = os.path.join(car_dir, "charge_new_feature.npy")
+            print(f"Running {data_path}!")
+            data = np.load(data_path)
+
+            battery_volt = data[:, :, 3:]
+            charge_features = data[:, :, :3]
+            needed = np.dstack((charge_features, battery_volt[:, :, cell_num]))
+
+            scalers = [StandardScaler() for _ in range(needed.shape[2])]
+            standardize_per_cycle(needed, scalers)
+            # NOTE: scalers 在逐循环拟合后最终保留的是最后一个循环的统计量，
+            # 因此这里 inverse_transform 用的是同一组统计量还原所有 batch。
+            cell_scaler = scalers[-1]
+
+            data_x, data_y = make_windows(needed, SEQ_LEN, LABEL_LEN, PRED_LEN, step=1)
+            data_x_tensor = torch.FloatTensor(data_x).to(device)
+
+            mse_list, mae_list, rmse_list, r2_list = [], [], [], []
+            volt_series = []
+
+            for batch in tqdm(range(data_x_tensor.shape[0])):
+                input_x = data_x_tensor[batch:batch + 1]  # [1, seq_len, channels]
+                true_y = data_y[batch, -PRED_LEN:, :]
+
+                output = model(input_x)
+                output = output[:, -PRED_LEN:, -2:]
+
+                input_volt = input_x[0, :, -1].detach().cpu().numpy()
+                pred_volt = output[0, :, -1].detach().cpu().numpy()
+
+                gd_volt = cell_scaler.inverse_transform(input_volt.reshape(-1, 1)).reshape(-1)
+                inverse_volt = cell_scaler.inverse_transform(pred_volt.reshape(-1, 1)).reshape(-1)
+                true_volt = cell_scaler.inverse_transform(true_y[:, -1].reshape(-1, 1)).reshape(-1)
+
+                gtvolt = np.concatenate((gd_volt, true_volt), axis=0)
+                pdvolt = np.concatenate((gd_volt, inverse_volt), axis=0)
+                volt_series.extend([gtvolt, pdvolt])
+
+                _save_picture(car_dir, cell_num, batch, gtvolt, pdvolt)
+
+                mse_list.append(mean_squared_error(true_volt, inverse_volt))
+                mae_list.append(mean_absolute_error(true_volt, inverse_volt))
+                rmse_list.append(sqrt(mean_squared_error(true_volt, inverse_volt)))
+                r2_list.append(r2_score(true_volt, inverse_volt))
+
+            _save_metrics(car_dir, cell_num, volt_series, mse_list, mae_list, rmse_list, r2_list)
+
+
+def _save_picture(car_dir, cell_num, batch, gtvolt, pdvolt):
+    picture_dir = os.path.join(car_dir, "pictures_volt", str(cell_num))
+    os.makedirs(picture_dir, exist_ok=True)
+    picture_path = os.path.join(picture_dir, f"{batch}.png")
+
+    plt.figure()
+    plt.plot(gtvolt, label="GroundTruth Volt", linewidth=2)
+    plt.plot(pdvolt, label="Prediction Volt", linewidth=2)
+    plt.legend()
+    plt.savefig(picture_path, bbox_inches="tight")
+    plt.close()
+
+
+def _save_metrics(car_dir, cell_num, volt_series, mse_list, mae_list, rmse_list, r2_list):
+    data_dir = os.path.join(car_dir, "volt_data")
+    os.makedirs(data_dir, exist_ok=True)
+    volt_data = pd.DataFrame(data=list(map(list, zip(*volt_series))))
+    volt_data.to_csv(os.path.join(data_dir, f"cell_{cell_num}.csv"), encoding="gbk")
+
+    for name, values in (
+        ("volt_mse", mse_list),
+        ("volt_mae", mae_list),
+        ("volt_rmse", rmse_list),
+        ("volt_r2", r2_list),
+    ):
+        metric_dir = os.path.join(car_dir, name)
+        os.makedirs(metric_dir, exist_ok=True)
+        np.save(os.path.join(metric_dir, f"cell_{cell_num}.npy"), values)
+
+
+if __name__ == "__main__":
+    main()
