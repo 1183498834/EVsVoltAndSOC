@@ -1,8 +1,22 @@
 # EVsVoltAndSOC
 
-2022 Digital Vehicle Competition, Innovation Group, Topic 2: **New Energy Vehicle Power Battery Safety Risk Assessment and Fault Warning (prediction on charging data)**.
+> New Energy Vehicle Power Battery Safety Risk Assessment and Fault Warning — predicting the power battery's **SOC** and **cell voltage** from GB/T 32960-2016 charging data.
 
-**Language / 语言:** [中文](README.md) · English
+[![Python](https://img.shields.io/badge/Python-3.7%2B-blue)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-ee4c2c)](https://pytorch.org/)
+[![Competition](https://img.shields.io/badge/2022DigitalVehicleCompetition-Innovation-green)](http://www.ncbdc.top/competition/innovate?coid=54)
+
+**Language / 语言：** [中文](README.md) · English
+
+## Table of Contents
+
+- [Problem Description](#problem-description)
+- [Approach](#approach)
+- [Project Structure](#project-structure)
+- [Dependencies](#dependencies)
+- [Usage](#usage)
+- [Data Description](#data-description)
+- [Results](#results)
 
 ## Problem Description
 
@@ -16,8 +30,10 @@ Based on the national standard, custom alarm criteria are established for EV dat
 
 This project focuses on predicting EV charging data, i.e., the battery's SOC and voltage during charging:
 
-- **SOC prediction**: refers to the paper [*Are Transformers Effective for Time Series Forecasting?*](https://arxiv.org/abs/2205.13504), using its **DLinear** neural network;
-- **Voltage prediction**: improves upon DLinear by replacing its linear layers with **LSTM** layers, resulting in the **DLSTM** network.
+| Target | Model | Description |
+| ------ | ----- | ----------- |
+| SOC | DLinear | Based on [*Are Transformers Effective for Time Series Forecasting?*](https://arxiv.org/abs/2205.13504) |
+| Cell voltage | DLSTM | Replaces DLinear's linear layers with LSTM layers |
 
 The overall pipeline:
 
@@ -30,24 +46,29 @@ The overall pipeline:
 
 ```
 .
-├── dlinear.py          # DLinear model (SOC prediction)
-├── dlstm.py            # DLSTM model (cell voltage prediction)
-├── decomposition.py    # Time-series decomposition (MovingAvg / SeriesDecomp)
-├── data_utils.py       # Data loading, sliding window, splitting, normalization utilities
-├── run_SOC.py          # Train the SOC prediction model
-├── run_U_DLSTM.py      # Train the cell voltage prediction model (per-cell)
-├── soc_predict.py      # Predict SOC with the trained model and evaluate
-├── volt_predict.py     # Predict cell voltage with the trained model and evaluate
-├── setup.py            # Package metadata
-├── requirements.txt    # Dependencies
+├── dlinear.py              # DLinear model (SOC prediction)
+├── dlstm.py                # DLSTM model (cell voltage prediction)
+├── decomposition.py        # Time-series decomposition (MovingAvg / SeriesDecomp)
+├── data_utils.py           # Data loading, sliding window, splitting, normalization utilities
+├── run_SOC.py              # Train the SOC prediction model
+├── run_U_DLSTM.py          # Train the cell voltage prediction model (per-cell)
+├── soc_predict.py          # Predict SOC with the trained model and evaluate
+├── volt_predict.py         # Predict cell voltage with the trained model and evaluate
+├── setup.py                # Package metadata
+├── requirements.txt        # Dependencies
 └── charge_new_feature.npy  # Sample data: shape (150, 147, 98)
 ```
 
 ## Dependencies
 
-- Python ≥ 3.7
-- PyTorch
-- NumPy / pandas / scikit-learn / matplotlib / tqdm
+| Dependency | Purpose |
+| ---------- | ------- |
+| Python ≥ 3.7 | Runtime |
+| PyTorch | Neural network framework |
+| NumPy / pandas | Data processing |
+| scikit-learn | Normalization and evaluation metrics |
+| matplotlib | Visualization |
+| tqdm | Training progress bar |
 
 Install dependencies:
 
@@ -69,34 +90,4 @@ pip install -r requirements.txt
    python run_U_DLSTM.py
    ```
 
-3. Predict SOC with the trained model:
-
-   ```bash
-   python soc_predict.py
-   ```
-
-4. Predict voltage with the trained model:
-
-   ```bash
-   python volt_predict.py
-   ```
-
-## Data Description
-
-`charge_new_feature.npy` is sample charging data with shape `(150, 147, 98)`:
-
-- Dimension 0: 150 charging cycles;
-- Dimension 1: 147 time steps;
-- Dimension 2: 98 channels, in order:
-  - Channel 0: total voltage;
-  - Channel 1: total current;
-  - Channel 2: SOC;
-  - Channel 3 onwards: individual cell voltages.
-
-The prediction scripts read vehicle data from `./np_data/*/charge_new_feature.npy` by default; adjust the directory as needed.
-
-## Results
-
-A segment of prediction results is shown below, demonstrating good prediction performance:
-
-![SOC prediction result](0.png)
+3. Predict SOC 
