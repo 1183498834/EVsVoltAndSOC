@@ -2,15 +2,21 @@
 
 2022 年数字汽车大赛创新组赛题二：**新能源汽车动力电池安全风险评估与故障预警（对充电数据进行预测）**。
 
-本项目基于国标 GB/T 32960-2016 的车辆数据，对电动车充电过程中的动力电池 **SOC（荷电状态）** 与 **单体电池电压** 进行预测，用于电池故障预警。
+*2022 Digital Vehicle Competition, Innovation Group, Topic 2: **New Energy Vehicle Power Battery Safety Risk Assessment and Fault Warning (prediction on charging data)**.*
 
-## 赛题描述
+**语言 / Language:** [中文](#中文) · [English](#english)
+
+---
+
+## 中文
+
+### 赛题描述
 
 原题及数据来源：[数字汽车大赛官网](http://www.ncbdc.top/competition/innovate?coid=54)
 
 > 基于国标 GB/T 32960-2016 的数据，对在线运行车辆进行动力电池故障预警。对原始数据进行数据预处理，从车辆的充电、行驶、静置等工况进行数据建模，通过对电池的运行状态进行分析，建立电池故障评估体系，完成预警模型训练，输出电池故障预警，提前预测电池故障，提高汽车安全性。
 
-## 解决思路
+### 解决思路
 
 根据国标对电动车的数据建立自定义报警标准，将警报分为**报警**与**预警**两类：对可以预测的数据进行预测，从而提前预警；对无法预测的数据进行即时报警。
 
@@ -26,7 +32,7 @@
 3. 构建神经网络并进行训练；
 4. 输入数据进行预测并查看结果。
 
-## 项目结构
+### 项目结构
 
 ```
 .
@@ -43,7 +49,7 @@
 └── charge_new_feature.npy  # 示例数据：形状 (150, 147, 98)
 ```
 
-## 环境依赖
+### 环境依赖
 
 - Python ≥ 3.7
 - PyTorch
@@ -55,7 +61,7 @@
 pip install -r requirements.txt
 ```
 
-## 使用方法
+### 使用方法
 
 1. 训练 SOC 预测模型（DLinear）：
 
@@ -81,7 +87,7 @@ pip install -r requirements.txt
    python volt_predict.py
    ```
 
-## 数据说明
+### 数据说明
 
 `charge_new_feature.npy` 为示例充电数据，形状为 `(150, 147, 98)`，含义如下：
 
@@ -95,8 +101,6 @@ pip install -r requirements.txt
 
 预测脚本默认从 `./np_data/*/charge_new_feature.npy` 读取待预测车辆数据，具体目录可按需调整。
 
-## 结果
+### 结果
 
-其中一段预测结果如下，可以看出预测效果较好：
-
-![SOC 预测结果](0.png)
+其中一段预测结果如下
